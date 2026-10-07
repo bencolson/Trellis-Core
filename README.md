@@ -67,12 +67,16 @@ swift run trellis hald --out work --with-validation   # identity + reversed Hald
 swift run trellis inspect work/identity-hald-L8.tif   # describe a TIFF's layout and profile
 ```
 
-Reference values come from [`colour-science`](https://www.colour-science.org):
+Reference values come from [`colour-science`](https://www.colour-science.org);
+the bake chain is additionally cross-checked against
+[OpenColorIO](https://opencolorio.org):
 
 ```sh
 pip install -r research/requirements.txt
 python3 research/reference/colorspace_reference.py --check
 python3 research/reference/deltaE_reference.py --check
+python3 research/reference/bake_reference.py --check
+python3 research/reference/ocio_bake_check.py
 ```
 
 ## Using it from another package

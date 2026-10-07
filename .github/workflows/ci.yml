@@ -46,3 +46,4 @@ jobs:
           python research/reference/colorspace_reference.py --check
           python research/reference/deltaE_reference.py --check
           python research/reference/bake_reference.py --check
+          python research/reference/ocio_bake_check.py

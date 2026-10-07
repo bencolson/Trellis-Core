@@ -79,4 +79,25 @@ final class CubeIOTests: XCTestCase {
         }
         XCTAssertLessThanOrEqual(worst, 5.1e-7)
     }
+
+    /// `.cube` output is byte-stable against the committed golden. The golden
+    /// is loaded in `research/reference/ocio_bake_check.py` through OCIO's
+    /// `FileTransform`, which must read the same values back exactly — proving
+    /// Trellis's `.cube` output parses in a strict, widely used reader.
+    func testCubeIOGoldenMatchesCommittedFixture() throws {
+        let n = 4
+        var values: [Vector3] = []
+        values.reserveCapacity(n * n * n)
+        for b in 0..<n {
+            for g in 0..<n {
+                for r in 0..<n {
+                    values.append(Vector3(Double(r) / 3, Double(g) / 3, Double(b) / 3))
+                }
+            }
+        }
+        let cube = CubeIO.write(LUT3D(size: n, values: values), title: "Trellis CubeIO golden")
+        let url = Bundle.module.url(forResource: "cubeio_golden", withExtension: "cube", subdirectory: "Fixtures")!
+        let golden = try Data(contentsOf: url)
+        XCTAssertEqual(String(data: golden, encoding: .utf8), cube)
+    }
 }
