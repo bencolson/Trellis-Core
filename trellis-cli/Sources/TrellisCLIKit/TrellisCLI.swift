@@ -399,8 +399,8 @@ private static func exitCode(report: Validate.Report, identity: Validate.Identit
         } else {
             out.add(String(format: "recipe: FAIL — max code shift %.4f (tolerance %.4f)",
                            identity.maxCodeDelta, identity.tolerance))
-            out.add("The recipe moved the image. Check: film curve on Auto, input profile not "
-                    + "From File, a style applied, or sharpening/NR/clarity still active.")
+            out.add("The recipe moved the image. Check: a tone curve still active, input "
+                    + "profile not from the file, a style applied, or sharpening/NR/clarity still active.")
         }
         return out.done(identity.pass ? 0 : 4)
     }
@@ -432,7 +432,7 @@ private static func exitCode(report: Validate.Report, identity: Validate.Identit
         let text = """
         trellis \(Trellis.version)
 
-        Move a Capture One look into 3D LUTs (.cube).
+        Move a processed Hald look into 3D LUTs (.cube).
 
         Usage:
           trellis version [--json]
