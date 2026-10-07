@@ -81,7 +81,13 @@ python3 research/reference/colorspace_reference.py --check
 python3 research/reference/deltaE_reference.py --check
 python3 research/reference/bake_reference.py --check
 python3 research/reference/ocio_bake_check.py
+python3 research/reference/gamut_reference.py --check
 ```
+
+`trellis build --gamut compress` swaps the hard clip for soft gamut
+compression (out-of-gamut colours pulled toward the white point, limits
+calculated from the Adobe RGB → Rec 709 boundary); it defaults to `clip`.
+The compression default is provisional until real looks have been judged.
 
 ## Using it from another package
 

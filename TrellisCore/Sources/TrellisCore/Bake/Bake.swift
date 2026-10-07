@@ -59,12 +59,13 @@ public enum Bake {
 
     /// Maps out-of-gamut colour values back into [0, 1]³.
     ///
-    /// The swap point is immediately after the final encode in `chain`: for the
-    /// default `hardClip` this is bit-identical to clipping in linear light
-    /// before that encode, because the odd-symmetric power curves map 0↔0 and
-    /// 1↔1 monotonically, so an encoded value is in [0, 1] exactly when its
-    /// linear input is. A future soft-compression handler instead gets to work
-    /// in *code* space, which is the documented choice.
+    /// The handler runs on **linear Rec. 709 light**, immediately after the
+    /// Adobe RGB → Rec 709 matrix and before the final video encode. For the
+    /// default `hardClip` this is bit-identical to clipping after the encode
+    /// (the odd-symmetric power curves map 0↔0 and 1↔1 monotonically, so the
+    /// M4/M4.1 parity references pass unchanged). Soft compression
+    /// (`Bake.gamutCompress`) works in linear light, which is where gamut
+    /// boundaries actually live.
     public typealias GamutHandler = (Vector3) -> Vector3
 
     /// Hard clip to [0, 1] per channel — the default.
@@ -88,9 +89,9 @@ public enum Bake {
     ///      → encode v^(1/2.2)              [γ563/256]
     ///      → tetra sample of `look`        (Adobe RGB / 563 → Adobe RGB / 563)
     ///      → decode v^2.2                  [γ563/256]
-    ///      → 3×3 Adobe RGB → Rec 709
+    ///     → 3×3 Adobe RGB → Rec 709      (linear Rec 709)
+    ///      → gamut handler                (linear: hard clip or soft compression)
     ///      → encode v^(1/2.4)
-    ///      → gamut handler
     ///     output (Rec 709 / γ2.4)
     public static func chain(_ look: LUT3D, mode: Mode, gamut: @escaping GamutHandler = Bake.hardClip) -> (Vector3) -> Vector3 {
         switch mode {
@@ -102,8 +103,8 @@ public enum Bake {
                 let inLinear = video.decode(v)
                 let adobeCode = TransferFunction.adobeRGB1998.encode(RGBPrimaries.rec709.matrix(to: .adobeRGB1998) * inLinear)
                 let looked = look.sample(adobeCode.x, adobeCode.y, adobeCode.z)
-                let outCode = video.encode(RGBPrimaries.adobeRGB1998.matrix(to: .rec709) * TransferFunction.adobeRGB1998.decode(looked))
-                return gamut(outCode)
+                let linear709 = RGBPrimaries.adobeRGB1998.matrix(to: .rec709) * TransferFunction.adobeRGB1998.decode(looked)
+                return video.encode(gamut(linear709))
             }
         }
     }
@@ -111,20 +112,9 @@ public enum Bake {
     /// Bakes `look` into a new `size³` LUT in `mode` by evaluating the chain at
     /// each grid point of the output cube. `size` is the .cube `LUT_3D_SIZE`:
     /// 33 (default) or 65 (high quality). `mode` and `size` follow
-    /// `Bake.space(mode)`, which is the space the result is in.
+    /// `Bake.space(mode)`, which is the space the result is in. All outputs
+    /// are hard-clipped to [0, 1] as a final safety net.
     public static func bake(_ look: LUT3D, mode: Mode, size: Int = 33, gamut: @escaping GamutHandler = Bake.hardClip) -> LUT3D {
-        precondition(size >= 2, "bake size must be ≥ 2")
-        let f = chain(look, mode: mode, gamut: gamut)
-        let m = 1.0 / Double(size - 1)
-        var values = [Vector3]()
-        values.reserveCapacity(size * size * size)
-        for b in 0..<size {
-            for g in 0..<size {
-                for r in 0..<size {
-                    values.append(f(Vector3(Double(r) * m, Double(g) * m, Double(b) * m)))
-                }
-            }
-        }
-        return LUT3D(size: size, values: values)
+        bakeWithReport(look, mode: mode, size: size, gamut: gamut).lut
     }
 }

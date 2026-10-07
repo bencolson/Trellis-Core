@@ -205,6 +205,7 @@ public enum TrellisCLI {
         let sizeText = takeOption("--cube-size", from: &args, out: &out) ?? "33"
         let modesText = takeOption("--modes", from: &args, out: &out) ?? "rec709-2.4"
         let outDir = takeOption("--out", from: &args, out: &out) ?? "."
+        let gamutText = takeOption("--gamut", from: &args, out: &out) ?? "clip"
         rejectExtras(args, out: &out)
         if let u = parsed(out) { return u }
 
@@ -214,6 +215,12 @@ public enum TrellisCLI {
         guard let modes = parseModes(modesText) else {
             return usageError("unknown mode in '\(modesText)' (use anchor, rec709-2.4, rec709-2.2)")
         }
+        guard gamutText == "clip" || gamutText == "compress" else {
+            return usageError("--gamut must be clip or compress (got '\(gamutText)')")
+        }
+        let gamut: (handler: Bake.GamutHandler, label: String) = gamutText == "clip"
+            ? (Bake.hardClip, "hard clip in linear Rec 709")
+            : (Bake.gamutCompress(), softGamutLabel())
 
         let processURL = URL(fileURLWithPath: path)
         guard let forward = (try? Tiff.read(contentsOf: processURL)) else {
@@ -254,14 +261,15 @@ public enum TrellisCLI {
         }
 
         for mode in modes {
-            let baked = Bake.bake(look, mode: mode, size: size)
+            let baked = Bake.bakeWithReport(look, mode: mode, size: size, gamut: gamut.handler)
+            let tally = baked.tally
             let title = "\(lookName) — \(mode.label)"
-            let cube = CubeIO.write(baked, title: title, comments: [
+            let cube = CubeIO.write(baked.lut, title: title, comments: [
                 "Trellis \(Trellis.version)",
                 "source: \(processURL.lastPathComponent)",
                 "input:  \(spaceLabelFor(mode)) code values",
                 "output: \(spaceLabelFor(mode)) code values",
-                "gamut: hard clip after final encode",
+                "gamut: \(gamutUpdateFor(mode, gamut.label, tally, gridPoints: size * size * size))",
                 "date:  \(dateString())",
             ])
             try? FileManager.default.createDirectory(at: URL(fileURLWithPath: outDir, isDirectory: true), withIntermediateDirectories: true)
@@ -272,9 +280,14 @@ public enum TrellisCLI {
             } catch {
                 return failure("could not write '\(url.path)': \(error)")
             }
-            files.append(["mode": mode.fileSuffix, "size": size, "title": title, "path": url.path])
+            files.append(["mode": mode.fileSuffix, "size": size, "title": title, "path": url.path,
+                          "gamut": gamutText, "compressed": tally.compressed, "clipped": tally.clipped])
             if !json {
                 out.add("Wrote \(url.path)  (\(size)³, \(mode.label))")
+                if tally.compressed > 0 || tally.clipped > 0 {
+                    out.add("  gamut: \(tally.compressed) compressed, \(tally.clipped) clipped"
+                        + " of \(size * size * size) grid points")
+                }
             }
         }
 
@@ -381,9 +394,11 @@ public enum TrellisCLI {
           trellis hald [--level 8|12] [--out DIR] [--with-validation] [--with-reversed] [--json]
               Write an identity Hald (16-bit TIFF, Adobe RGB (1998))
           trellis build PROCESSED.tif [--reversed REVERSED.tif] [--cube-size 33|65]
-                      [--modes anchor,rec709-2.4,rec709-2.2] [--out DIR] [--json]
+                      [--modes anchor,rec709-2.4,rec709-2.2] [--gamut clip|compress]
+                      [--out DIR] [--json]
               Validate the processed Hald, reconstruct the look, and write one
-              .cube per mode (default rec709-2.4, size 33) as <look>_<mode>_<size>.cube
+              .cube per mode (default rec709-2.4, size 33) as <look>_<mode>_<size>.cube;
+              --gamut compress uses soft gamut compression (default clip)
           trellis validate PROCESSED.tif [--reversed REVERSED.tif] [--identity] [--json]
               Report profile, bit depth, dimensions, spatial filters and
               (with --reversed) locality; --identity reports the recipe test
@@ -462,5 +477,25 @@ public enum TrellisCLI {
         formatter.timeZone = TimeZone(identifier: "UTC")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
+    }
+
+    /// `--gamut compress`'s .cube header line: what ran and with which
+    /// calculated (never tuned) limits.
+    private static func softGamutLabel() -> String {
+        let l = Bake.adobeToRec709Limits
+        return String(format: "soft compression toward white (threshold 1.0, "
+                      + "calculated limits [%.4f, %.4f, %.4f]) + hard-clip safety net",
+                      l.x, l.y, l.z)
+    }
+
+    /// The `.cube` header's gamut line: the handling that ran, plus the tally
+    /// (how many grid points it compressed or clipped) when anything moved.
+    private static func gamutUpdateFor(_ mode: Bake.Mode, _ label: String,
+                                       _ tally: Bake.BakeTally, gridPoints: Int) -> String {
+        if mode == .anchor { return "n/a (anchor mode: look LUT only)" }
+        if tally.compressed > 0 || tally.clipped > 0 {
+            return "\(label) — \(tally.compressed) compressed, \(tally.clipped) clipped of \(gridPoints) points"
+        }
+        return label
     }
 }

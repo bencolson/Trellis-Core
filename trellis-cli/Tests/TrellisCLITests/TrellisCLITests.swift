@@ -170,7 +170,7 @@ final class TrellisCLITests: XCTestCase {
         XCTAssertTrue(text.contains("# Trellis \(Trellis.version)"))
         XCTAssertTrue(text.contains("# source: look.tif"))
         XCTAssertTrue(text.contains("# input:  Rec. 709 / gamma 2.4 code values"))
-        XCTAssertTrue(text.contains("# gamut: hard clip after final encode"))
+        XCTAssertTrue(text.contains("# gamut: hard clip in linear Rec 709"))
     }
 
     func testBuildAllModesAndCubeSize() throws {
@@ -223,11 +223,29 @@ final class TrellisCLITests: XCTestCase {
         XCTAssertTrue(matches.isEmpty)
     }
 
+    func testBuildGamutCompressReportsTally() throws {
+        // A Hald whose look is saturated Adobe green: its Rec 709 rendition is
+        // out of gamut, so --gamut compress must engage and report it.
+        let base = identityHald()
+        var samples = [UInt16](repeating: 0, count: base.width * base.height * 3)
+        for i in 0..<(base.width * base.height) { samples[i * 3 + 1] = 65535 }
+        let green = RGBImage(width: base.width, height: base.height, samplesPerPixel: 3,
+                             bitsPerSample: 16, samples: samples, iccProfile: base.iccProfile)
+        let haldURL = try write(green, "green.tif")
+        let result = run(["build", haldURL.path, "--out", dir.path, "--gamut", "compress"])
+        XCTAssertEqual(result.code, 0, result.stderr)
+        XCTAssertTrue(result.stdout.contains("compressed"), result.stdout)
+        let cubeURL = dir.appendingPathComponent("green_rec709-2.4_33.cube")
+        let text = try String(contentsOf: cubeURL, encoding: .utf8)
+        XCTAssertTrue(text.contains("# gamut: soft compression toward white"), String(text.prefix(400)))
+    }
+
     func testBuildUsageErrors() throws {
         XCTAssertEqual(run(["build"]).code, 2)                                   // no positional
         XCTAssertEqual(run(["build", "x", "--cube-size", "16"]).code, 2)          // bad size
         XCTAssertEqual(run(["build", "x", "--modes", "bogus"]).code, 2)           // bad mode
         XCTAssertEqual(run(["build", "x", "--reversed"]).code, 2)                 // value missing
+        XCTAssertEqual(run(["build", "x", "--gamut", "bogus"]).code, 2)           // bad gamut
     }
 
     // MARK: - validate
