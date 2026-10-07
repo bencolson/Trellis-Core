@@ -51,6 +51,7 @@ public enum TrellisCLI {
         case "hald": return hald(args, json: json)
         case "build": return build(args, json: json)
         case "validate": return validate(args, json: json)
+        case "verify-recipe": return verifyRecipe(args, json: json)
         case "inspect": return inspect(args)
         case "-h", "--help", "help": return help(json: json)
         default:
@@ -350,11 +351,58 @@ public enum TrellisCLI {
         return out.done(exitCode(report: report, identity: identity, identityMode: identityMode))
     }
 
-    private static func exitCode(report: Validate.Report, identity: Validate.IdentityResult?,
-                                 identityMode: Bool) -> Int32 {
+private static func exitCode(report: Validate.Report, identity: Validate.IdentityResult?,
+                                  identityMode: Bool) -> Int32 {
         guard report.ok else { return 3 }
         if identityMode, let identity, !identity.pass { return 4 }
         return 0
+    }
+
+    /// The standalone recipe check: proves a no-adjustments export of the
+    /// identity Hald comes back untouched. Not part of daily baking.
+    private static func verifyRecipe(_ args: [String], json: Bool) -> Result {
+        var args = args
+        var out = Out()
+        guard let path = takePositional("PROCESSED.tif", from: &args, out: &out) else { return parsed(out) ?? out.done(2) }
+        rejectExtras(args, out: &out)
+        if let u = parsed(out) { return u }
+
+        guard let forward = (try? Tiff.read(contentsOf: URL(fileURLWithPath: path))) else {
+            return failure("could not read '\(path)' (is it a TIFF?)")
+        }
+        let identity: Validate.IdentityResult
+        do {
+            identity = try Validate.identity(forward)
+        } catch {
+            return Result(code: 3, stdout: json ? jsonString(["command": "verify-recipe", "ok": false,
+                                                              "error": "\(error)"]) + "\n" : "",
+                          stderr: json ? "" : "trellis: \(error)\n")
+        }
+        if json {
+            let object: [String: Any] = [
+                "command": "verify-recipe",
+                "ok": identity.pass,
+                "pass": identity.pass,
+                "max_code_delta": identity.maxCodeDelta,
+                "tolerance": identity.tolerance,
+                "mean_dE2000": identity.meanDeltaE,
+                "max_dE2000": identity.maxDeltaE,
+            ]
+            return Result(code: identity.pass ? 0 : 4, stdout: jsonString(object) + "\n", stderr: "")
+        }
+        if identity.pass {
+            out.add(String(format: "recipe: PASS — max code shift %.4f (tolerance %.4f) · "
+                           + "ΔE2000 mean %.3f, max %.3f",
+                           identity.maxCodeDelta, identity.tolerance,
+                           identity.meanDeltaE, identity.maxDeltaE))
+            out.add("The no-adjustments export came back untouched; this recipe is clean.")
+        } else {
+            out.add(String(format: "recipe: FAIL — max code shift %.4f (tolerance %.4f)",
+                           identity.maxCodeDelta, identity.tolerance))
+            out.add("The recipe moved the image. Check: film curve on Auto, input profile not "
+                    + "From File, a style applied, or sharpening/NR/clarity still active.")
+        }
+        return out.done(identity.pass ? 0 : 4)
     }
 
     private static func inspect(_ args: [String]) -> Result {
@@ -400,8 +448,12 @@ public enum TrellisCLI {
               .cube per mode (default rec709-2.4, size 33) as <look>_<mode>_<size>.cube;
               --gamut compress uses soft gamut compression (default clip)
           trellis validate PROCESSED.tif [--reversed REVERSED.tif] [--identity] [--json]
-              Report profile, bit depth, dimensions, spatial filters and
-              (with --reversed) locality; --identity reports the recipe test
+              Report profile, bit depth, dimensions, local edits and
+              (with --reversed) locality; --identity reports ΔE
+          trellis verify-recipe PROCESSED.tif [--json]
+              Standalone recipe check: an export of identity-hald-L8.tif
+              processed with NO adjustments must come back untouched
+              (exit 0 clean / 4 altered / 3 not a usable Hald)
           trellis inspect FILE.tif
               Describe a TIFF's layout and profile
 

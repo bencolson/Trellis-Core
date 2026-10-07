@@ -278,6 +278,36 @@ final class TrellisCLITests: XCTestCase {
         XCTAssertEqual(run(["validate", forward.path]).code, 3)
     }
 
+    // MARK: - verify-recipe (the standalone recipe check)
+
+    func testVerifyRecipePassesForCleanRecipe() throws {
+        let forward = try write(identityHald(), "clean.tif")
+        let result = run(["verify-recipe", forward.path])
+        XCTAssertEqual(result.code, 0)
+        XCTAssertTrue(result.stdout.contains("recipe: PASS"))
+    }
+
+    func testVerifyRecipeFailsForLook() throws {
+        let forward = try write(offsetHald(2_000), "look.tif")
+        let result = run(["verify-recipe", forward.path])
+        XCTAssertEqual(result.code, 4)
+        XCTAssertTrue(result.stdout.contains("recipe: FAIL"))
+    }
+
+    func testVerifyRecipeRejectsNonHald() throws {
+        let forward = try write(eightBitHald(), "bad.tif")
+        XCTAssertEqual(run(["verify-recipe", forward.path]).code, 3)
+    }
+
+    func testVerifyRecipeJson() throws {
+        let forward = try write(identityHald(), "clean.tif")
+        let result = run(["verify-recipe", forward.path, "--json"])
+        XCTAssertEqual(result.code, 0)
+        let object = json(result.stdout)
+        XCTAssertEqual(object["command"] as? String, "verify-recipe")
+        XCTAssertEqual(object["pass"] as? Bool, true)
+    }
+
     func testValidateJson() throws {
         let forward = try write(identityHald(), "forward.tif")
         let result = run(["validate", forward.path, "--json"])
