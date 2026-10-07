@@ -1,0 +1,3 @@
+# Reference-value generation for the tests (all BSD-3-Clause).
+numpy>=1.26
+colour-science==0.4.7

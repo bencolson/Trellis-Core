@@ -1,0 +1,13 @@
+TrellisCore
+Copyright 2026 Ben Colson
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes the Adobe RGB (1998) ICC profile
+("Copyright 2000 Adobe Systems Incorporated"), unmodified:
+
+  TrellisCore/Sources/TrellisCore/ICC/AdobeRGB1998Profile.swift (as bytes)
+  TrellisCore/Tests/TrellisCoreTests/Fixtures/AdobeRGB1998.icc
+
+That profile is Adobe's, is not covered by the Apache License, and is
+redistributed under Adobe's own terms for its ICC profiles.
