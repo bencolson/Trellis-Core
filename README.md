@@ -8,8 +8,7 @@ Open source (Apache-2.0), clean-room, and built by a working photographer/DIT
 for stills-into-motion people.
 
 **Core principle:** every colour space is explicit, pinned and labelled at both
-ends. No "Rec 709" without saying which gamma. That's the fix for LUTs that
-come out over-saturated and too contrasty, as if they needed applying at 50%.
+ends. No "Rec 709" without saying which gamma.
 
 > **Status:** in development. Hald generation, reading and validation work;
 > baked Rec 709 output and the `build` / `validate` commands are next.
