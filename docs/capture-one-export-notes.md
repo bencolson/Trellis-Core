@@ -130,3 +130,24 @@ transfer, gamut, date). Corners exact: black → 0.000000, white → 0.999985
 Recipe note: the session's "Trellis Hald" recipe had `output sub folder` left
 set to "Cozy Fall no HDR" from the styled run, so exports landed there rather
 than in `Output/` — check the recipe's sub-folder setting before a run.
+
+## Soft gamut compression on real looks (M4.2, 2026-10-07)
+
+Three built-in Capture One 16.8.6 Creative Edits styles (Cozy Fall, Cool
+Tones, Airy Summer) applied to clones of the identity Hald L8, exported
+through the same recipe, baked at 33³ with both `--gamut clip` and
+`--gamut compress` (threshold 1.0, calculated limits). The two handlers
+always engage the same grid points — the out-of-Rec-709 population — and
+differ only in *how* they land them back inside:
+
+| Look | out-of-gamut (of 35,937) | max \|Δ\| clip→compress | mean \|Δ\| |
+|---|---|---|---|
+| Cozy Fall | 8,950 (25 %) | 0.125 | 3.8e-3 |
+| Cool Tones | 993 (2.8 %) | 0.013 | 4.7e-5 |
+| Airy Summer | 8,891 (25 %) | 0.096 | 1.7e-3 |
+
+So the difference is invisible on low-saturation looks (Cool Tones: mean
+4.7e-5) and clearly visible on stylised ones (Cozy Fall / Airy Summer clip a
+quarter of the grid: the compression pulls the saturated greens/cyans in
+smoothly toward white, the clip cuts them). Default stays `clip`; choosing
+between them is the last open item of M4.2, to be judged in Resolve.

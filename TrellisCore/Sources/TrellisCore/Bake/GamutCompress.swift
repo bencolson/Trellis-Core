@@ -153,18 +153,22 @@ extension Bake {
     /// (the green boundary pushes a channel to ~−0.4).
     static let tallyEpsilon = 1e-6
 
-    /// `bake` plus a tally of how many grid points were compressed or clipped.
+    /// `bake` plus a tally of how many grid points the gamut handler engaged.
     ///
-    /// `compressed` counts points whose handler output differs from the grid
-    /// input beyond `tallyEpsilon`; `clipped` counts those whose output the
-    /// [0, 1] safety clip then had to trim. With `hardClip` the whole
-    /// out-of-gamut population counts as `compressed` (it was fixed by the
-    /// handler, so the safety net never fires); a handler that doesn't clip
-    /// itself (e.g. the identity) reports those points under `clipped` instead.
+    /// The handler's effect is isolated by running the chain twice — once with
+    /// the real handler, once with an identity handler — and comparing: the
+    /// look's own recolouring cancels, so only the gamut handling lands.
+    ///
+    /// - `compressed`: the handler changed the point vs no gamut handling
+    ///   (for `hardClip` and `gamutCompress` this is exactly the out-of-Rec-709
+    ///   population of the grid).
+    /// - `clipped`: the handler's output still needed the [0, 1] safety clip
+    ///   (only handlers that don't clip themselves report anything here).
     public static func bakeWithReport(_ look: LUT3D, mode: Mode, size: Int = 33,
                                       gamut: @escaping GamutHandler = Bake.hardClip) -> (lut: LUT3D, tally: BakeTally) {
         precondition(size >= 2, "bake size must be ≥ 2")
         let f = chain(look, mode: mode, gamut: gamut)
+        let passthrough = chain(look, mode: mode, gamut: { $0 })
         let m = 1.0 / Double(size - 1)
         var values = [Vector3]()
         values.reserveCapacity(size * size * size)
@@ -174,13 +178,17 @@ extension Bake {
                 for r in 0..<size {
                     let v = Vector3(Double(r) * m, Double(g) * m, Double(b) * m)
                     let handled = f(v)
+                    let unhandled = passthrough(v)
                     let clipped = hardClip(handled)
-                    if abs(handled.x - v.x) > tallyEpsilon || abs(handled.y - v.y) > tallyEpsilon || abs(handled.z - v.z) > tallyEpsilon {
-                        if abs(handled.x - clipped.x) > tallyEpsilon || abs(handled.y - clipped.y) > tallyEpsilon || abs(handled.z - clipped.z) > tallyEpsilon {
-                            tally.clipped += 1
-                        } else {
-                            tally.compressed += 1
-                        }
+                    if abs(handled.x - unhandled.x) > tallyEpsilon
+                        || abs(handled.y - unhandled.y) > tallyEpsilon
+                        || abs(handled.z - unhandled.z) > tallyEpsilon {
+                        tally.compressed += 1
+                    }
+                    if abs(handled.x - clipped.x) > tallyEpsilon
+                        || abs(handled.y - clipped.y) > tallyEpsilon
+                        || abs(handled.z - clipped.z) > tallyEpsilon {
+                        tally.clipped += 1
                     }
                     values.append(clipped)
                 }
