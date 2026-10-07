@@ -10,8 +10,9 @@ for stills-into-motion people.
 **Core principle:** every colour space is explicit, pinned and labelled at both
 ends. No "Rec 709" without saying which gamma.
 
-> **Status:** in development. Hald generation, reading and validation work;
-> baked Rec 709 output and the `build` / `validate` commands are next.
+> **Status:** in development. Halds, reading, validation, baked Rec 709 output
+> and the `build` / `validate` commands work end to end, verified against a
+> real Capture One export.
 
 ## How it works
 
@@ -42,8 +43,8 @@ chromatic adaptation is involved.
 - [x] Hald generator, unmanaged 16-bit TIFF I/O, Adobe RGB (1998) ICC
 - [x] Hald reader → look LUT, .cube writer, validation (profile, bit depth,
       spatial filters, local tone mapping, identity ΔE2000)
-- [ ] Baked Rec 709 / 2.4 and 2.2 output
-- [ ] `trellis build` and `trellis validate`
+- [x] Baked Rec 709 / 2.4 and 2.2 output
+- [x] `trellis build` and `trellis validate`
 
 ## Layout
 
@@ -63,7 +64,10 @@ Requires Swift 5.9+ (Xcode 15+ on macOS 14+). Also builds and tests on Linux.
 swift build
 swift test
 swift run trellis spaces                              # colour spaces and matrices in use
-swift run trellis hald --out work --with-validation   # identity + reversed Hald, validation chart
+swift run trellis hald --out work --with-validation --with-reversed
+swift run trellis build work/identity-hald-L8.tif --reversed work/reversed-hald-L8.tif \
+    --modes anchor,rec709-2.4,rec709-2.2 --out work/cubes
+swift run trellis validate work/identity-hald-L8.tif --reversed work/reversed-hald-L8.tif --identity
 swift run trellis inspect work/identity-hald-L8.tif   # describe a TIFF's layout and profile
 ```
 

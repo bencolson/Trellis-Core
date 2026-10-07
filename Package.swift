@@ -22,8 +22,20 @@ let package = Package(
         ),
         .executableTarget(
             name: "trellis",
-            dependencies: ["TrellisCore"],
+            dependencies: ["TrellisCLIKit"],
             path: "trellis-cli/Sources/trellis"
+        ),
+        // The CLI's command logic, split out so the end-to-end tests can drive
+        // it without spawning the executable.
+        .target(
+            name: "TrellisCLIKit",
+            dependencies: ["TrellisCore"],
+            path: "trellis-cli/Sources/TrellisCLIKit"
+        ),
+        .testTarget(
+            name: "TrellisCLITests",
+            dependencies: ["TrellisCLIKit", "TrellisCore"],
+            path: "trellis-cli/Tests/TrellisCLITests"
         ),
     ]
 )

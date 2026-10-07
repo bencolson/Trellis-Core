@@ -100,3 +100,33 @@ can't separate the two. So Trellis does both of these:
 - The residual check stays, but only for gross filters (sharpening, noise
   reduction, grain), which it still separates clearly from identity (flagged
   above rms 0.005).
+
+## CLI validation run (M5, 2026-10-07)
+
+First full run through the complete `trellis` CLI (`hald` → Capture One →
+`validate` → `build`), Capture One 16.8.6.25 (macOS), session `Trellis`:
+
+```sh
+trellis hald --out work --with-validation --with-reversed
+# process identity-hald-L8.tif, reversed-hald-L8.tif and validation.tif
+# through the "Trellis Hald" recipe (same settings as above)
+trellis validate identity-hald-L8.tif --reversed reversed-hald-L8.tif --identity
+trellis build identity-hald-L8.tif --reversed reversed-hald-L8.tif \
+    --modes anchor,rec709-2.4,rec709-2.2 --cube-size 33 --out cubes
+```
+
+`validate`: PASS — dimensions 512×512 (Hald level 8), profile Adobe RGB (1998)
+by content, 16-bit. Locality **clean — max 0 codes** (a pure per-pixel look
+round-trips bit-exact through C1). Residual rms 5.7e-6 (the 16-bit
+quantisation floor, no gross filter). Identity **PASS — max |d| 0.000023 on
+[0,1]** (≈1.5 16-bit codes, well under the 1/1023 gate; matches the 1-LSB
+downward bias recorded above), mean ΔE2000 0.0013.
+
+`build` wrote `<look>_<mode>_<size>.cube` for all three modes, 33³ each, with
+the §5.7 header comments (Trellis version, source, input/output space +
+transfer, gamut, date). Corners exact: black → 0.000000, white → 0.999985
+(the 1-LSB C1 bias shows up as the look's white being 65534 instead of 65535).
+
+Recipe note: the session's "Trellis Hald" recipe had `output sub folder` left
+set to "Cozy Fall no HDR" from the styled run, so exports landed there rather
+than in `Output/` — check the recipe's sub-folder setting before a run.
