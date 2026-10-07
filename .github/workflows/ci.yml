@@ -48,3 +48,5 @@ jobs:
           python research/reference/bake_reference.py --check
           python research/reference/ocio_bake_check.py
           python research/reference/gamut_reference.py --check
+          python research/reference/camera_reference.py --check
+          python research/reference/ocio_camera_check.py
