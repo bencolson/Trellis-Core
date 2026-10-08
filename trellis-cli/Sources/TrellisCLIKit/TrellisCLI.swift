@@ -53,6 +53,7 @@ public enum TrellisCLI {
         case "validate": return validate(args, json: json)
         case "verify-recipe": return verifyRecipe(args, json: json)
         case "inspect": return inspect(args)
+        case "check-cube": return checkCube(args, json: json)
         case "-h", "--help", "help": return help(json: json)
         default:
             return usageError("unknown command '\(command)'")
@@ -207,14 +208,26 @@ public enum TrellisCLI {
         let modesText = takeOption("--modes", from: &args, out: &out) ?? "rec709-2.4"
         let outDir = takeOption("--out", from: &args, out: &out) ?? "."
         let gamutText = takeOption("--gamut", from: &args, out: &out) ?? "clip"
+        let levelsText = takeOption("--log-levels", from: &args, out: &out) ?? "video"
+        let highlightsText = takeOption("--highlights", from: &args, out: &out) ?? "clip"
         rejectExtras(args, out: &out)
         if let u = parsed(out) { return u }
 
         guard let size = Int(sizeText), size == 33 || size == 65 else {
             return usageError("--cube-size must be 33 or 65 (got '\(sizeText)')")
         }
-        guard let modes = parseModes(modesText) else {
-            return usageError("unknown mode in '\(modesText)' (use anchor, rec709-2.4, rec709-2.2)")
+        guard let levels = Bake.LogLevels(rawValue: levelsText) else {
+            return usageError("--log-levels must be video or full (got '\(levelsText)')")
+        }
+        let highlights: HighlightHandling
+        switch highlightsText {
+        case "clip": highlights = .clip
+        case "rolloff": highlights = .rollOff
+        default: return usageError("--highlights must be clip or rolloff (got '\(highlightsText)')")
+        }
+        guard let modes = parseModes(modesText, levels: levels) else {
+            let cameras = CameraLog.exportable.map(\.slug).joined(separator: ", ")
+            return usageError("unknown mode in '\(modesText)' (use anchor, rec709-2.4, rec709-2.2, or a camera: \(cameras))")
         }
         guard gamutText == "clip" || gamutText == "compress" else {
             return usageError("--gamut must be clip or compress (got '\(gamutText)')")
@@ -253,7 +266,6 @@ public enum TrellisCLI {
         if case .suspect = report.grossFilters { warnings.append(report.grossFilters.description) }
 
         let lookName = processURL.deletingPathExtension().lastPathComponent
-        let spaceLabelFor = { (mode: Bake.Mode) in Bake.space(mode).label }
         var files: [[String: Any]] = []
 
         if !json {
@@ -262,17 +274,25 @@ public enum TrellisCLI {
         }
 
         for mode in modes {
-            let baked = Bake.bakeWithReport(look, mode: mode, size: size, gamut: gamut.handler)
+            let baked = Bake.bakeWithReport(look, mode: mode, size: size, gamut: gamut.handler, highlights: highlights)
             let tally = baked.tally
             let title = "\(lookName) — \(mode.label)"
-            let cube = CubeIO.write(baked.lut, title: title, comments: [
+            var comments = [
                 "Trellis \(Trellis.version)",
                 "source: \(processURL.lastPathComponent)",
-                "input:  \(spaceLabelFor(mode)) code values",
-                "output: \(spaceLabelFor(mode)) code values",
+                "input:  \(mode.inputLabel)",
+                "output: \(Bake.space(mode).label) code values",
+            ]
+            if case .camera = mode {
+                comments.append("cst: camera log → Rec 709 / 2.4, highlights \(highlights == .clip ? "clipped" : "rolled off")"
+                                + " — \(tally.cstHandled) of \(size * size * size) points outside Rec 709 or "
+                                + (highlights == .clip ? "above white" : "above the 0.8 knee"))
+            }
+            comments += [
                 "gamut: \(gamutUpdateFor(mode, gamut.label, tally, gridPoints: size * size * size))",
                 "date:  \(dateString())",
-            ])
+            ]
+            let cube = CubeIO.write(baked.lut, title: title, comments: comments)
             try? FileManager.default.createDirectory(at: URL(fileURLWithPath: outDir, isDirectory: true), withIntermediateDirectories: true)
             let filename = "\(lookName)_\(mode.fileSuffix)_\(size).cube"
             let url = URL(fileURLWithPath: outDir, isDirectory: true).appendingPathComponent(filename)
@@ -442,11 +462,20 @@ private static func exitCode(report: Validate.Report, identity: Validate.Identit
           trellis hald [--level 8|12] [--out DIR] [--with-validation] [--with-reversed] [--json]
               Write an identity Hald (16-bit TIFF, Adobe RGB (1998))
           trellis build PROCESSED.tif [--reversed REVERSED.tif] [--cube-size 33|65]
-                      [--modes anchor,rec709-2.4,rec709-2.2] [--gamut clip|compress]
+                      [--modes anchor,rec709-2.4,rec709-2.2,CAMERA…] [--gamut clip|compress]
+                      [--log-levels video|full] [--highlights clip|rolloff]
                       [--out DIR] [--json]
               Validate the processed Hald, reconstruct the look, and write one
               .cube per mode (default rec709-2.4, size 33) as <look>_<mode>_<size>.cube;
-              --gamut compress uses soft gamut compression (default clip)
+              --gamut compress uses soft gamut compression (default clip).
+              CAMERA modes take log footage in and give Rec 709 / 2.4 out:
+              arri-logc3-awg3, arri-logc4-awg4, canon-clog2-cgamut,
+              canon-clog3-cgamut, sony-slog3-sgamut3cine, sony-slog3-sgamut3.
+              --log-levels: how the grading app presents the footage (video:
+              legal-range files expanded to 0–1, the default; full: code values)
+          trellis check-cube FILE.cube [--json]
+              Read a .cube strictly and report its size, domain and any problem
+              (exit 0 readable / 3 not a valid .cube)
           trellis validate PROCESSED.tif [--reversed REVERSED.tif] [--identity] [--json]
               Report profile, bit depth, dimensions, local edits and
               (with --reversed) locality; --identity reports ΔE
@@ -470,17 +499,56 @@ private static func exitCode(report: Validate.Report, identity: Validate.Identit
 
     // MARK: - Shared pieces
 
-    private static func parseModes(_ text: String) -> [Bake.Mode]? {
+    private static func parseModes(_ text: String, levels: Bake.LogLevels) -> [Bake.Mode]? {
         var modes: [Bake.Mode] = []
         for token in text.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
             switch token {
             case "anchor": modes.append(.anchor)
             case "rec709-2.4": modes.append(.rec709_2_4)
             case "rec709-2.2": modes.append(.rec709_2_2)
-            default: return nil
+            default:
+                guard let camera = CameraLog.exportable.first(where: { $0.slug == token }) else { return nil }
+                modes.append(.camera(camera, levels: levels))
             }
         }
         return modes.isEmpty ? nil : modes
+    }
+
+    private static func checkCube(_ args: [String], json: Bool) -> Result {
+        var args = args
+        var out = Out()
+        guard let path = takePositional("FILE.cube", from: &args, out: &out) else { return parsed(out) ?? out.done(2) }
+        rejectExtras(args, out: &out)
+        if let u = parsed(out) { return u }
+        guard let data = FileManager.default.contents(atPath: path) else {
+            return failure("could not read '\(path)'")
+        }
+        do {
+            let file = try CubeIO.read([UInt8](data))
+            if json {
+                return Result(code: 0, stdout: jsonString([
+                    "command": "check-cube", "ok": true, "path": path,
+                    "title": file.title ?? NSNull(), "size": file.lut.size,
+                    "domain_min": [file.domainMin.x, file.domainMin.y, file.domainMin.z],
+                    "domain_max": [file.domainMax.x, file.domainMax.y, file.domainMax.z],
+                    "warnings": file.warnings,
+                ]) + "\n", stderr: "")
+            }
+            out.add(path)
+            out.add("ok: \(file.lut.size)³\(file.title.map { ", \"\($0)\"" } ?? "")")
+            if file.domainMin != Vector3(0, 0, 0) || file.domainMax != Vector3(1, 1, 1) {
+                out.add("domain: \(file.domainMin) … \(file.domainMax)")
+            }
+            for w in file.warnings { out.add("warning: \(w)") }
+            return out.done(0)
+        } catch {
+            if json {
+                return Result(code: 3, stdout: jsonString(["command": "check-cube", "ok": false, "path": path,
+                                                          "error": "\(error)"]) + "\n", stderr: "")
+            }
+            out.add("\(path): \(error)")
+            return out.done(3)
+        }
     }
 
     private static func reportJSON(_ r: Validate.Report) -> [String: Any] {

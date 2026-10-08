@@ -140,10 +140,16 @@ extension Bake {
     public struct BakeTally: Equatable, Sendable {
         public var compressed: Int
         public var clipped: Int
+        /// Camera modes only: grid points the CST's highlight step changed,
+        /// i.e. that decode outside Rec 709 or above display white. Large for
+        /// any log LUT (much of a log cube lies there), so it's reported
+        /// rather than warned about.
+        public var cstHandled: Int
 
-        public init(compressed: Int = 0, clipped: Int = 0) {
+        public init(compressed: Int = 0, clipped: Int = 0, cstHandled: Int = 0) {
             self.compressed = compressed
             self.clipped = clipped
+            self.cstHandled = cstHandled
         }
     }
 
@@ -165,10 +171,15 @@ extension Bake {
     /// - `clipped`: the handler's output still needed the [0, 1] safety clip
     ///   (only handlers that don't clip themselves report anything here).
     public static func bakeWithReport(_ look: LUT3D, mode: Mode, size: Int = 33,
-                                      gamut: @escaping GamutHandler = Bake.hardClip) -> (lut: LUT3D, tally: BakeTally) {
+                                      gamut: @escaping GamutHandler = Bake.hardClip,
+                                      highlights: HighlightHandling = .clip) -> (lut: LUT3D, tally: BakeTally) {
         precondition(size >= 2, "bake size must be ≥ 2")
-        let f = chain(look, mode: mode, gamut: gamut)
-        let passthrough = chain(look, mode: mode, gamut: { $0 })
+        let f = chain(look, mode: mode, gamut: gamut, highlights: highlights)
+        let passthrough = chain(look, mode: mode, gamut: { $0 }, highlights: highlights)
+        var cst: (CameraConversion, LogLevels)?
+        if case .camera(let camera, let levels) = mode {
+            cst = (CameraConversion(from: camera, to: .rec709Gamma24, highlights: highlights), levels)
+        }
         let m = 1.0 / Double(size - 1)
         var values = [Vector3]()
         values.reserveCapacity(size * size * size)
@@ -189,6 +200,16 @@ extension Bake {
                         || abs(handled.y - clipped.y) > tallyEpsilon
                         || abs(handled.z - clipped.z) > tallyEpsilon {
                         tally.clipped += 1
+                    }
+                    if let (conversion, levels) = cst {
+                        let code = levels == .video
+                            ? Vector3(CameraLog.codeValue(fromVideoRange: v.x),
+                                      CameraLog.codeValue(fromVideoRange: v.y),
+                                      CameraLog.codeValue(fromVideoRange: v.z))
+                            : v
+                        let linear = conversion.sceneLinear(code)
+                        let d = conversion.highlights.apply(linear) - linear
+                        if max(abs(d.x), abs(d.y), abs(d.z)) > tallyEpsilon { tally.cstHandled += 1 }
                     }
                     values.append(clipped)
                 }

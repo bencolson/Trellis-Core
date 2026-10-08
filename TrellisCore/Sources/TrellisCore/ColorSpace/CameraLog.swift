@@ -182,6 +182,41 @@ public struct CameraLog: Equatable, Hashable, Sendable, Identifiable {
     /// e.g. "Sony S-Log3 / S-Gamut3.Cine".
     public var label: String { "\(curve.label) / \(primaries.name)" }
 
+    /// File-name fragment, e.g. "sony-slog3-sgamut3cine".
+    public var slug: String {
+        let curve: String
+        switch self.curve {
+        case .arriLogC3: curve = "arri-logc3"
+        case .arriLogC4: curve = "arri-logc4"
+        case .sonySLog3: curve = "sony-slog3"
+        case .panasonicVLog: curve = "panasonic-vlog"
+        case .canonLog2: curve = "canon-clog2"
+        case .canonLog3: curve = "canon-clog3"
+        case .redLog3G10: curve = "red-log3g10"
+        case .appleLog: curve = "apple-log"
+        case .fujifilmFLog2: curve = "fujifilm-flog2"
+        case .djiDLog: curve = "dji-dlog"
+        case .nikonNLog: curve = "nikon-nlog"
+        case .blackmagicFilmGen5: curve = "bmd-film-gen5"
+        case .davinciIntermediate: curve = "davinci-intermediate"
+        }
+        let gamuts: [String: String] = [
+            "ARRI Wide Gamut 3": "awg3", "ARRI Wide Gamut 4": "awg4",
+            "S-Gamut3": "sgamut3", "S-Gamut3.Cine": "sgamut3cine", "V-Gamut": "vgamut",
+            "Cinema Gamut": "cgamut", "REDWideGamutRGB": "rwg", "Rec. 2020": "rec2020",
+            "F-Gamut": "fgamut", "DJI D-Gamut": "dgamut",
+            "Blackmagic Wide Gamut": "bmdwg", "DaVinci Wide Gamut": "dwg",
+        ]
+        let gamut = gamuts[primaries.name] ?? primaries.name.lowercased().filter { $0.isLetter || $0.isNumber }
+        return "\(curve)-\(gamut)"
+    }
+
+    /// The cameras with baked LUT exports, in menu order: ARRI LogC3 / LogC4,
+    /// Canon Log 2 / 3, Sony S-Log3 (S-Gamut3.Cine and S-Gamut3).
+    public static let exportable: [CameraLog] = [
+        .arriLogC3, .arriLogC4, .canonLog2, .canonLog3, .sonySLog3Cine, .sonySLog3,
+    ]
+
     public static let arriLogC3 = CameraLog(curve: .arriLogC3, primaries: .arriWideGamut3)
     public static let arriLogC4 = CameraLog(curve: .arriLogC4, primaries: .arriWideGamut4)
     public static let sonySLog3Cine = CameraLog(curve: .sonySLog3, primaries: .sGamut3Cine)
@@ -379,6 +414,13 @@ public struct CameraConversion: Sendable {
     /// Normalised code values in → encoded destination values in [0, 1].
     @inlinable
     public func apply(_ codeValues: Vector3) -> Vector3 {
-        destination.transfer.encode(highlights.apply(matrix * source.curve.decode(codeValues)))
+        destination.transfer.encode(highlights.apply(sceneLinear(codeValues)))
+    }
+
+    /// The step before highlight handling: scene-linear in the destination
+    /// primaries, unbounded. For reporting how much the handling changed.
+    @inlinable
+    public func sceneLinear(_ codeValues: Vector3) -> Vector3 {
+        matrix * source.curve.decode(codeValues)
     }
 }

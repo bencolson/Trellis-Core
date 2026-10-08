@@ -5,9 +5,8 @@
 //  Created by Ben Colson on 07/10/2026.
 //
 
-/// Writes `.cube` 3D LUT files (Adobe Cube LUT Specification 1.0).
-///
-/// Write-only for now: nothing in Trellis reads .cube files back yet.
+/// Writes and reads `.cube` 3D LUT files (Adobe Cube LUT Specification 1.0).
+/// Reading lives in CubeReader.swift.
 public enum CubeIO {
 
     /// Serialises `lut` as a `.cube` file: `#` header comments, then `TITLE`,

@@ -240,12 +240,49 @@ final class TrellisCLITests: XCTestCase {
         XCTAssertTrue(text.contains("# gamut: soft compression toward white"), String(text.prefix(400)))
     }
 
+    func testBuildCameraModesWriteLogInputCubes() throws {
+        let haldURL = try write(identityHald(), "look.tif")
+        let result = run(["build", haldURL.path, "--out", dir.path,
+                          "--modes", "arri-logc3-awg3,sony-slog3-sgamut3cine", "--log-levels", "full",
+                          "--highlights", "rolloff"])
+        XCTAssertEqual(result.code, 0, result.stderr)
+        let url = dir.appendingPathComponent("look_sony-slog3-sgamut3cine-to-rec709-2.4-full_33.cube")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("# input:  Sony S-Log3 / S-Gamut3.Cine code values, full levels"))
+        XCTAssertTrue(text.contains("# output: Rec. 709 / gamma 2.4 code values"))
+        XCTAssertTrue(text.contains("highlights rolled off"))
+        let file = try CubeIO.read(text)
+        XCTAssertEqual(file.title, "look — Sony S-Log3 / S-Gamut3.Cine → Rec 709 / 2.4 (full levels)")
+        // 18% grey (S-Log3 code 420) comes out as Rec 709 / 2.4 grey.
+        let grey = file.lut.sample(420 / 1023, 420 / 1023, 420 / 1023)
+        XCTAssertEqual(grey.y, pow(0.18, 1 / 2.4), accuracy: 3e-3)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("look_arri-logc3-awg3-to-rec709-2.4-full_33.cube").path))
+    }
+
+    func testCheckCube() throws {
+        let haldURL = try write(identityHald(), "look.tif")
+        XCTAssertEqual(run(["build", haldURL.path, "--out", dir.path]).code, 0)
+        let good = run(["check-cube", dir.appendingPathComponent("look_rec709-2.4_33.cube").path])
+        XCTAssertEqual(good.code, 0, good.stderr)
+        XCTAssertTrue(good.stdout.contains("ok: 33³"))
+
+        let bad = dir.appendingPathComponent("bad.cube")
+        try Data("LUT_3D_SIZE 2\n0 0 0\n".utf8).write(to: bad)
+        let result = run(["check-cube", bad.path])
+        XCTAssertEqual(result.code, 3)
+        XCTAssertTrue(result.stdout.contains("too few data lines: LUT_3D_SIZE 2 needs 8 (2³), found 1"), result.stdout)
+    }
+
     func testBuildUsageErrors() throws {
         XCTAssertEqual(run(["build"]).code, 2)                                   // no positional
         XCTAssertEqual(run(["build", "x", "--cube-size", "16"]).code, 2)          // bad size
         XCTAssertEqual(run(["build", "x", "--modes", "bogus"]).code, 2)           // bad mode
         XCTAssertEqual(run(["build", "x", "--reversed"]).code, 2)                 // value missing
         XCTAssertEqual(run(["build", "x", "--gamut", "bogus"]).code, 2)           // bad gamut
+        XCTAssertEqual(run(["build", "x", "--modes", "red-log3g10-rwg"]).code, 2)  // camera without an export
+        XCTAssertEqual(run(["build", "x", "--log-levels", "legal"]).code, 2)      // bad levels
+        XCTAssertEqual(run(["build", "x", "--highlights", "soft"]).code, 2)       // bad highlights
     }
 
     // MARK: - validate
