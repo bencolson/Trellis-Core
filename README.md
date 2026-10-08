@@ -97,6 +97,25 @@ The compression default is provisional until real looks have been judged.
 .product(name: "TrellisCore", package: "trellis-core")
 ```
 
+## Acknowledgements
+
+- **[Lattice](https://videovillage.co/lattice/)** by Video Village was the
+  main inspiration. It showed how good a dedicated Mac tool for inspecting
+  and converting LUTs can be, and how much it helps when every input and
+  output colour space is stated plainly. Trellis aims for the same clarity
+  for the stills-to-motion handoff. If you need the cat's pyjamas, this is
+  the one. Trellis isn't affiliated with Video Village, and no Lattice code
+  or file internals were used.
+- **[colour-science](https://www.colour-science.org)** supplies the reference
+  values every colour-maths test is checked against.
+- **[OpenColorIO](https://opencolorio.org)** provides the independent
+  cross-check of the bake chain.
+- **Hald CLUTs**, the identity-image technique Eskil Steenberg devised, are
+  what make it possible to capture a look from a raw processor in the
+  first place.
+- **Adobe** published the Cube LUT format specification and the Adobe RGB
+  (1998) ICC profile bundled here (see [`NOTICE`](NOTICE)).
+
 ## Licence
 
 [Apache-2.0](LICENSE), except Adobe's Adobe RGB (1998) ICC profile, which is
