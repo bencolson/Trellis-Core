@@ -151,7 +151,11 @@ def main() -> int:
         for key in ("colour_science_version", "generator"):
             committed.pop(key, None)
             data.pop(key, None)
-        problems = list(_diff(committed, data, "$"))
+        problems = [
+            p
+            for k in committed.keys() | data.keys()
+            for p in _diff(committed.get(k), data.get(k), f"$.{k}", CODE_VALUE_TOL if k == "conversions" else 1e-13)
+        ]
         for p in problems[:20]:
             print(p, file=sys.stderr)
         if problems:
@@ -164,6 +168,13 @@ def main() -> int:
     OUT.write_text(json.dumps(data, indent=1) + "\n")
     print(f"wrote {OUT.relative_to(ROOT)}")
     return 0
+
+
+# Encoded code values get the same tolerance as the Swift tests' codeValueTolerance:
+# matrix products leave ~1e-16 of float noise in linear light (and it differs by
+# CPU/BLAS path), and a power-curve encode is steep at zero, so near black that
+# noise becomes up to ~1e-7. Matrices and the curves themselves stay tight.
+CODE_VALUE_TOL = 1e-6
 
 
 def _diff(a, b, path, tol=1e-13):
