@@ -1,18 +1,21 @@
 # TrellisCore
 
-The colour engine and command-line tool for turning a **Capture One** look into
-**3D LUTs (.cube)**, so a look built on stills can be used on video in DaVinci
+Trellis Core is the open-source colour engine and command-line tool that supports the look portability behind Trellis.
+It's capable of turning a **Capture One** look into a .cube **3D LUT**, so a look built on stills can be used on video in DaVinci
 Resolve.
 
-Open source (Apache-2.0), clean-room, and built by a working photographer/DIT
+Open source (Apache-2.0), clean-room, built by a working photographer/DIT
 for stills-into-motion people.
 
 **Core principle:** every colour space is explicit, pinned and labelled at both
 ends. No "Rec 709" without saying which gamma.
 
-> **Status:** in development. Halds, reading, validation, baked Rec 709 output
-> and the `build` / `validate` commands work end to end, verified against a
-> real Capture One export.
+> **Status:**the core is scope-complete for Phase 1. `TrellisCore` — the `trellis` CLI ship
+> the Hald → validated LUT → baked .cube chain end-to-end,
+> verified against a real Capture One export. Tests run in CI on macOS —Linux,
+> checked against `colour-science` —[OpenColorIO](https://opencolorio.org)
+> reference values. Further change is maintenance: bug fixes, CI, docs —not
+> new features.
 
 ## How it works
 
@@ -37,14 +40,14 @@ Matrices are derived from the primaries in code and tested against the
 published values and against `colour-science`. Both spaces are D65, so no
 chromatic adaptation is involved.
 
-## Roadmap
+## Scope (shipped)
 
-- [x] Colour spaces and conversions
-- [x] Hald generator, unmanaged 16-bit TIFF I/O, Adobe RGB (1998) ICC
-- [x] Hald reader → look LUT, .cube writer, validation (profile, bit depth,
-      spatial filters, local tone mapping, identity ΔE2000)
-- [x] Baked Rec 709 / 2.4 and 2.2 output
-- [x] `trellis build` and `trellis validate`
+- Colour spaces, transfer curves, derived matrices, conversions
+- Hald generator, unmanaged 16-bit TIFF I/O, Adobe RGB (1998) ICC
+- Hald reader → look LUT, strict .cube reader/writer, validation: profile, bit depth, spatial filters, local tone mapping, identity ΔE2000
+- Baked Rec 709 / 2.4 & 2.2 output modes, plus `--gamut compress`
+- `trellis hald`, `trellis build`, `trellis validate`, `trellis inspect`
+
 
 ## Layout
 
@@ -100,10 +103,8 @@ The compression default is provisional until real looks have been judged.
 ## Acknowledgements
 
 - **[Lattice](https://videovillage.co/lattice/)** by Video Village was the
-  main inspiration. It showed how good a dedicated Mac tool for inspecting
-  and converting LUTs can be, and how much it helps when every input and
-  output colour space is stated plainly. Trellis aims for the same clarity
-  for the stills-to-motion handoff. If you need the cat's pyjamas, this is
+  main inspiration. It showed how good a dedicated tool for inspecting
+  and converting LUTs can be. If you need the cat's pyjamas, this is
   the one. Trellis isn't affiliated with Video Village, and no Lattice code
   or file internals were used.
 - **[colour-science](https://www.colour-science.org)** supplies the reference
